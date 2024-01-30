@@ -146,12 +146,14 @@ ParamsType = t.Optional[t.Mapping[str, str]]
 
 class S3Client:
     def __init__(
-        self, session: ClientSession, url: t.Union[URL, str],
+        self, session: ClientSession, 
+        url: t.Union[URL, str],
         secret_access_key: t.Optional[str] = None,
         access_key_id: t.Optional[str] = None,
         session_token: t.Optional[str] = None,
         region: str = "",
         credentials: t.Optional[AbstractCredentials] = None,
+        extra_context = None
     ):
         url = URL(url)
         if credentials is None:
@@ -171,13 +173,15 @@ class S3Client:
         self._url = URL(url).with_user(None).with_password(None)
         self._session = session
         self._credentials = credentials
+        self._extra_context = extra_context
 
     @property
     def url(self) -> URL:
         return self._url
 
     def request(
-        self, method: str, path: str,
+        self, method: str, 
+        path: str,
         headers: t.Optional[HeadersType] = None,
         params: ParamsType = None,
         data: t.Optional[DataType] = None,
@@ -203,14 +207,27 @@ class S3Client:
         url = (self._url / path.lstrip("/"))
         url = url.with_path(quote(url.path), encoded=True).with_query(params)
 
+        print(url)
+
         headers = self._make_headers(headers)
         headers.extend(
             self._credentials.signer.sign_with_headers(
                 method, str(url), headers=headers, content_hash=content_sha256,
             ),
-        )
+        )        
+
+        # We need to hack the URL here if needed
+        requestUrl = url
+        if self._extra_context:
+            requestUrl = requestUrl.with_path(self._extra_context + url.path)
+
+        print(requestUrl.human_repr())
+        print("method",method)
+        print("headers",headers)
+        print("data",data)
+
         return self._session.request(
-            method, url, headers=headers, data=data, **kwargs,
+            method, requestUrl, headers=headers, data=data, **kwargs,
         )
 
     def get(self, object_name: str, **kwargs) -> RequestContextManager:
